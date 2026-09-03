@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FGC Kuno — Ledger & Courts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<header>
+  <p class="kicker">FGC ATHLETES · SPORTS FEST</p>
+  <h1>Kuno Ledger &amp; Courts</h1>
+  <p class="sub">Payment tracking and pickleball match-ups — synced live for everyone.</p>
+  <div class="conn"><span class="dot" id="connDot"></span><span id="connText">Connecting…</span></div>
+</header>
+
+<div id="setupWarning" class="setup-warning" style="display:none;">
+  This copy isn't connected to a database yet. Open <code>app.js</code>, find
+  <code>SUPABASE_URL</code> and <code>SUPABASE_ANON_KEY</code> near the top,
+  and paste in your project's values from Supabase → Project Settings → API.
+</div>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="ledger">Payment Ledger</button>
+  <button class="tab-btn" data-tab="courts">Court Matchmaking</button>
+</nav>
+
+<main>
+  <section id="tab-ledger">
+    <div class="stat-row" id="statRow"></div>
+    <div class="panel">
+      <h2>Athlete Payments</h2>
+      <p class="hint">Tap any cell to enter or edit an amount. Changes save instantly and sync to everyone with this page open.</p>
+      <div class="table-scroll">
+        <table id="ledgerTable">
+          <thead><tr id="headRow"></tr></thead>
+          <tbody id="bodyRows"></tbody>
+          <tfoot><tr id="footRow"></tr></tfoot>
+        </table>
+      </div>
+      <div class="add-row">
+        <input type="text" id="newAthleteName" placeholder="Add athlete name">
+        <button class="action" onclick="addAthlete()">+ Add athlete</button>
+      </div>
+      <div class="add-row">
+        <input type="date" id="newDateVal">
+        <button class="action secondary" onclick="addDateColumn()">+ Add collection date</button>
+        <button class="action ball" onclick="exportCSV()">Export CSV</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-courts" style="display:none;">
+    <div class="panel">
+      <h2>Who's playing today</h2>
+      <p class="hint">Uncheck anyone who isn't around. Everyone starts checked.</p>
+      <div class="roster" id="roster"></div>
+    </div>
+    <div class="panel">
+      <h2>Generate match-ups</h2>
+      <div class="controls">
+        <label>Format
+          <select id="formatSel">
+            <option value="doubles">Doubles (4 per court)</option>
+            <option value="singles">Singles (2 per court)</option>
+          </select>
+        </label>
+        <label>&nbsp;<button class="action ball" onclick="generateCourts()">🎾 Assign courts</button></label>
+      </div>
+      <div class="courts-grid" id="courtsGrid"></div>
+      <div class="bench" id="benchNote"></div>
+    </div>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
