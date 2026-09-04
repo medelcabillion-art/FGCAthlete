@@ -1,25 +1,11 @@
-/* ================================================================
-   ⬇️⬇️⬇️  PASTE YOUR SUPABASE PROJECT DETAILS BELOW  ⬇️⬇️⬇️
+const SUPABASE_URL = "https://xcgwltntqdppofgibfbm.supabase.co";        // e.g. "https://abcdefgh.supabase.co"
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhjZ3dsdG50cWRwcG9mZ2liZmJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0MTU3NzAsImV4cCI6MjEwMzk5MTc3MH0.8j9rUX8UlFfa7IaeYdsp2QiLLiValOJgcIaE67XNsKA";       // long string starting with "eyJ..."
 
-   Where to find them: Supabase dashboard → Project Settings (gear
-   icon) → Data API (or "API") → copy "Project URL" and the
-   "anon public" key.
-
-   Replace ONLY the text inside the quotes on the next two lines.
-   Do not remove the quote marks.
-   ================================================================ */
-
-const SUPABASE_URL = "https://xcgwltntqdppofgibfbm.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhjZ3dsdG50cWRwcG9mZ2liZmJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0MTU3NzAsImV4cCI6MjEwMzk5MTc3MH0.8j9rUX8UlFfa7IaeYdsp2QiLLiValOJgcIaE67XNsKA";
-
-/* ================================================================
-   ⬆️⬆️⬆️  STOP EDITING ABOVE THIS LINE  ⬆️⬆️⬆️
-   ================================================================ */
 
 let sb = null;
-let athletes = [];   // {id, name, active}
-let dates = [];       // {date_key, label}
-let payments = [];    // {athlete_id, date_key, amount}
+let athletes = [];
+let dates = [];
+let payments = [];
 
 function isConfigured(){
   return !SUPABASE_URL.includes("PASTE_YOUR") && !SUPABASE_ANON_KEY.includes("PASTE_YOUR");
@@ -84,6 +70,23 @@ function paymentFor(athleteId, dateKey){
 function athleteTotal(athleteId){
   return payments.filter(p=>p.athlete_id===athleteId)
     .reduce((s,p)=>s+(Number(p.amount)||0),0);
+}
+
+/* Which date column counts as "today's session":
+   an exact match to today's date if one exists, otherwise
+   the most recent date on or before today. */
+function getSessionDateKey(){
+  const todayStr = new Date().toISOString().slice(0,10);
+  if(dates.some(d=>d.date_key===todayStr)) return todayStr;
+  const past = dates.filter(d=>d.date_key <= todayStr).sort((a,b)=>b.date_key.localeCompare(a.date_key));
+  return past.length ? past[0].date_key : null;
+}
+
+function isUnpaidToday(athleteId){
+  const sessionKey = getSessionDateKey();
+  if(!sessionKey) return false; // no session date yet — don't flag anyone
+  const val = paymentFor(athleteId, sessionKey);
+  return !val; // undefined or 0 counts as unpaid
 }
 
 function renderLedger(){
@@ -178,16 +181,24 @@ function exportCSV(){
 let activeMap = {}; // athleteId -> bool, defaults true
 
 function renderRoster(){
-  const roster = document.getElementById('roster');
-  roster.innerHTML = athletes.map(a=>{
+  const chips = athletes.map(a=>{
     if(!(a.id in activeMap)) activeMap[a.id] = true;
-    return `<label class="chip">
+    const unpaid = isUnpaidToday(a.id);
+    return `<label class="chip${unpaid ? ' unpaid' : ''}">
       <input type="checkbox" ${activeMap[a.id] ? 'checked':''} onchange="toggleActive('${a.id}', this.checked)">
       ${a.name}
+      ${unpaid ? '<span class="badge">unpaid</span>' : ''}
     </label>`;
   }).join('');
+  const roster = document.getElementById('roster');
+  const rosterBB = document.getElementById('rosterBB');
+  if(roster) roster.innerHTML = chips;
+  if(rosterBB) rosterBB.innerHTML = chips;
 }
-function toggleActive(id, checked){ activeMap[id] = checked; }
+function toggleActive(id, checked){
+  activeMap[id] = checked;
+  renderRoster(); // keep pickleball + basketball checklists in sync with each other
+}
 
 function shuffle(arr){
   const out = arr.slice();
@@ -201,7 +212,12 @@ function shuffle(arr){
 function generateCourts(){
   const format = document.getElementById('formatSel').value;
   const perCourt = format==='doubles' ? 4 : 2;
-  const pool = shuffle(athletes.filter(a=>activeMap[a.id]).map(a=>a.name));
+  const activeAthletes = athletes.filter(a=>activeMap[a.id]);
+  const pool = shuffle(activeAthletes);
+
+  const nameTag = (a) => isUnpaidToday(a.id)
+    ? `${a.name} <span class="badge" style="margin-left:6px;">unpaid</span>`
+    : a.name;
 
   const courts = [];
   let i=0;
@@ -215,25 +231,58 @@ function generateCourts(){
     grid.innerHTML = courts.map((c,idx)=>{
       if(format==='doubles'){
         return `<div class="court-card"><h3>Court ${idx+1}</h3>
-          <div class="side">${c[0]} &amp; ${c[1]}</div>
+          <div class="side">${nameTag(c[0])} &amp; ${nameTag(c[1])}</div>
           <div class="vs">vs</div>
-          <div class="side">${c[2]} &amp; ${c[3]}</div></div>`;
+          <div class="side">${nameTag(c[2])} &amp; ${nameTag(c[3])}</div></div>`;
       }
       return `<div class="court-card"><h3>Court ${idx+1}</h3>
-        <div class="side">${c[0]}</div><div class="vs">vs</div><div class="side">${c[1]}</div></div>`;
+        <div class="side">${nameTag(c[0])}</div><div class="vs">vs</div><div class="side">${nameTag(c[1])}</div></div>`;
     }).join('');
   }
-  document.getElementById('benchNote').innerHTML = bench.length ? `<b>On the bench:</b> ${bench.join(', ')}` : '';
+  document.getElementById('benchNote').innerHTML = bench.length ? `<b>On the bench:</b> ${bench.map(a=>a.name).join(', ')}` : '';
+}
+
+function generateBasketball(){
+  const perTeam = Number(document.getElementById('bbFormatSel').value); // 2, 3, or 4
+  const perGame = perTeam * 2;
+  const activeAthletes = athletes.filter(a=>activeMap[a.id]);
+  const pool = shuffle(activeAthletes);
+
+  const nameTag = (a) => isUnpaidToday(a.id)
+    ? `${a.name} <span class="badge" style="margin-left:6px;">unpaid</span>`
+    : a.name;
+
+  const games = [];
+  let i=0;
+  for(; i+perGame<=pool.length; i+=perGame) games.push(pool.slice(i, i+perGame));
+  const bench = pool.slice(i);
+
+  const grid = document.getElementById('bbGrid');
+  if(games.length===0){
+    grid.innerHTML = `<p class="hint">Not enough players checked in for a full ${perTeam}v${perTeam} game yet.</p>`;
+  } else {
+    grid.innerHTML = games.map((g,idx)=>{
+      const teamA = g.slice(0, perTeam);
+      const teamB = g.slice(perTeam);
+      return `<div class="court-card"><h3>Game ${idx+1} — ${perTeam}v${perTeam}</h3>
+        <div class="side">${teamA.map(nameTag).join(', ')}</div>
+        <div class="vs">vs</div>
+        <div class="side">${teamB.map(nameTag).join(', ')}</div></div>`;
+    }).join('');
+  }
+  document.getElementById('bbBenchNote').innerHTML = bench.length ? `<b>On the bench:</b> ${bench.map(a=>a.name).join(', ')}` : '';
 }
 
 /* ---------- tabs ---------- */
+const tabSections = { ledger: 'tab-ledger', courts: 'tab-courts', basketball: 'tab-basketball' };
 document.querySelectorAll('.tab-btn').forEach(btn=>{
   btn.addEventListener('click', ()=>{
     document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
     const tab = btn.dataset.tab;
-    document.getElementById('tab-ledger').style.display = tab==='ledger' ? '' : 'none';
-    document.getElementById('tab-courts').style.display = tab==='courts' ? '' : 'none';
+    Object.entries(tabSections).forEach(([key, id])=>{
+      document.getElementById(id).style.display = (key===tab) ? '' : 'none';
+    });
   });
 });
 
