@@ -27,7 +27,8 @@
 
 <nav class="tabs">
   <button class="tab-btn active" data-tab="ledger">Payment Ledger</button>
-  <button class="tab-btn" data-tab="courts">Court Matchmaking</button>
+  <button class="tab-btn" data-tab="courts">Pickleball Courts</button>
+  <button class="tab-btn" data-tab="basketball">Basketball Games</button>
 </nav>
 
 <main>
@@ -58,11 +59,11 @@
   <section id="tab-courts" style="display:none;">
     <div class="panel">
       <h2>Who's playing today</h2>
-      <p class="hint">Uncheck anyone who isn't around. Everyone starts checked.</p>
+      <p class="hint">Uncheck anyone who isn't around. Everyone starts checked. Names marked <b style="color:var(--coral)">unpaid</b> haven't paid for today's collection date yet — they can still be added to a court.</p>
       <div class="roster" id="roster"></div>
     </div>
     <div class="panel">
-      <h2>Generate match-ups</h2>
+      <h2>Pickleball match-ups</h2>
       <div class="controls">
         <label>Format
           <select id="formatSel">
@@ -74,6 +75,30 @@
       </div>
       <div class="courts-grid" id="courtsGrid"></div>
       <div class="bench" id="benchNote"></div>
+    </div>
+  </section>
+
+  <section id="tab-basketball" style="display:none;">
+    <div class="panel">
+      <h2>Who's playing today</h2>
+      <p class="hint">Same roster as pickleball — uncheck anyone who isn't around. Names marked <b style="color:var(--coral)">unpaid</b> haven't paid for today's collection date yet — they can still play.</p>
+      <div class="roster" id="rosterBB"></div>
+    </div>
+    <div class="panel">
+      <h2>Basketball match-ups</h2>
+      <p class="hint">No more rock-paper-scissors — pick a format and this shuffles even teams for you.</p>
+      <div class="controls">
+        <label>Format
+          <select id="bbFormatSel">
+            <option value="2">2v2</option>
+            <option value="3">3v3</option>
+            <option value="4">4v4</option>
+          </select>
+        </label>
+        <label>&nbsp;<button class="action ball" onclick="generateBasketball()">🏀 Assign teams</button></label>
+      </div>
+      <div class="courts-grid" id="bbGrid"></div>
+      <div class="bench" id="bbBenchNote"></div>
     </div>
   </section>
 </main>
