@@ -1,3 +1,14 @@
+/* ================================================================
+   ⬇️⬇️⬇️  PASTE YOUR SUPABASE PROJECT DETAILS BELOW  ⬇️⬇️⬇️
+
+   Where to find them: Supabase dashboard → Project Settings (gear
+   icon) → Data API (or "API") → copy "Project URL" and the
+   "anon public" key.
+
+   Replace ONLY the text inside the quotes on the next two lines.
+   Do not remove the quote marks.
+   ================================================================ */
+
 const SUPABASE_URL = "https://xcgwltntqdppofgibfbm.supabase.co";        // e.g. "https://abcdefgh.supabase.co"
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhjZ3dsdG50cWRwcG9mZ2liZmJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0MTU3NzAsImV4cCI6MjEwMzk5MTc3MH0.8j9rUX8UlFfa7IaeYdsp2QiLLiValOJgcIaE67XNsKA";       // long string starting with "eyJ..."
 
@@ -83,6 +94,13 @@ function renderLeaderboard(){
       <td>${gp ? rate+'%' : '—'}</td>
     </tr>`;
   }).join('');
+}
+
+async function resetLeaderboard(){
+  const sure = confirm("Reset wins and losses for every athlete? This can't be undone.");
+  if(!sure) return;
+  await sb.from('athletes').update({ wins: 0, losses: 0 }).not('id', 'is', null);
+  await loadAll();
 }
 
 function subscribeRealtime(){
