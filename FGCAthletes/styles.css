@@ -85,7 +85,15 @@ button.action:disabled{ opacity:0.5; cursor:not-allowed; }
 .court-card{ background:var(--bg-panel-2); border:1px solid var(--line); border-left:3px solid var(--court); border-radius:8px; padding:12px 14px; }
 .court-card h3{ font-family:'Space Grotesk',sans-serif; font-size:13px; margin:0 0 8px; color:var(--ball); }
 .court-card .side{ font-size:13.5px; padding:4px 0; }
+.player{ display:inline-flex; align-items:center; gap:4px; }
+.miss-btn{
+  background:none; border:none; color:var(--coral); cursor:pointer;
+  font-size:11px; padding:0 2px; opacity:0.7;
+}
+.miss-btn:hover{ opacity:1; }
 .court-card .vs{ text-align:center; color:var(--muted); font-family:'IBM Plex Mono',monospace; font-size:11px; padding:2px 0; }
+.win-row{ display:flex; gap:6px; margin-top:10px; }
+.win-row .win-btn{ flex:1; font-size:11.5px; padding:7px 6px; }
 .bench{ margin-top:14px; font-size:12.5px; color:var(--muted); }
 .bench b{ color:var(--ink); }
 .setup-warning{
