@@ -29,6 +29,7 @@
   <button class="tab-btn active" data-tab="ledger">Payment Ledger</button>
   <button class="tab-btn" data-tab="courts">Pickleball Courts</button>
   <button class="tab-btn" data-tab="basketball">Basketball Games</button>
+  <button class="tab-btn" data-tab="leaderboard">Leaderboard</button>
 </nav>
 
 <main>
@@ -61,6 +62,16 @@
       <h2>Who's playing today</h2>
       <p class="hint">Uncheck anyone who isn't around. Everyone starts checked. Names marked <b style="color:var(--coral)">unpaid</b> haven't paid for today's collection date yet — they can still be added to a court.</p>
       <div class="roster" id="roster"></div>
+    </div>
+    <div class="panel">
+      <h2>Lock partners (optional)</h2>
+      <p class="hint">Force two players to always land on the same team when you generate doubles courts. Doesn't apply to singles.</p>
+      <div class="controls">
+        <select id="lockA"></select>
+        <select id="lockB"></select>
+        <button class="action secondary" onclick="lockPair()">🔒 Lock pair</button>
+      </div>
+      <div class="roster" id="lockedList"></div>
     </div>
     <div class="panel">
       <h2>Pickleball match-ups</h2>
@@ -99,6 +110,19 @@
       </div>
       <div class="courts-grid" id="bbGrid"></div>
       <div class="bench" id="bbBenchNote"></div>
+    </div>
+  </section>
+
+  <section id="tab-leaderboard" style="display:none;">
+    <div class="panel">
+      <h2>Leaderboard</h2>
+      <p class="hint">Ranked by wins recorded from match results. Tap "Team won" under a match on the Courts or Basketball tab to record it here.</p>
+      <div class="table-scroll">
+        <table id="leaderTable">
+          <thead><tr><th>#</th><th>Name</th><th>Wins</th><th>Losses</th><th>Win %</th></tr></thead>
+          <tbody id="leaderRows"></tbody>
+        </table>
+      </div>
     </div>
   </section>
 </main>
