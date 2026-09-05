@@ -1,11 +1,14 @@
 const SUPABASE_URL = "https://xcgwltntqdppofgibfbm.supabase.co";        // e.g. "https://abcdefgh.supabase.co"
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhjZ3dsdG50cWRwcG9mZ2liZmJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0MTU3NzAsImV4cCI6MjEwMzk5MTc3MH0.8j9rUX8UlFfa7IaeYdsp2QiLLiValOJgcIaE67XNsKA";       // long string starting with "eyJ..."
 
+/* ================================================================
+   ⬆️⬆️⬆️  STOP EDITING ABOVE THIS LINE  ⬆️⬆️⬆️
+   ================================================================ */
 
 let sb = null;
-let athletes = [];
-let dates = [];
-let payments = [];
+let athletes = [];   // {id, name, active}
+let dates = [];       // {date_key, label}
+let payments = [];    // {athlete_id, date_key, amount}
 
 function isConfigured(){
   return !SUPABASE_URL.includes("PASTE_YOUR") && !SUPABASE_ANON_KEY.includes("PASTE_YOUR");
@@ -52,6 +55,34 @@ async function loadAll(){
   payments = pay.data || [];
   renderLedger();
   renderRoster();
+  renderLockSelects();
+  renderLockedPairs();
+  renderLeaderboard();
+}
+
+function renderLeaderboard(){
+  const body = document.getElementById('leaderRows');
+  if(!body) return;
+  const ranked = athletes.slice().sort((a,b)=>{
+    const wa = a.wins||0, wb = b.wins||0;
+    if(wb !== wa) return wb - wa;
+    const gpA = (a.wins||0)+(a.losses||0), gpB = (b.wins||0)+(b.losses||0);
+    const rateA = gpA ? (a.wins||0)/gpA : 0;
+    const rateB = gpB ? (b.wins||0)/gpB : 0;
+    return rateB - rateA;
+  });
+  body.innerHTML = ranked.map((a,idx)=>{
+    const w = a.wins||0, l = a.losses||0;
+    const gp = w+l;
+    const rate = gp ? Math.round((w/gp)*100) : 0;
+    return `<tr>
+      <td>${idx+1}</td>
+      <td>${a.name}</td>
+      <td class="total-cell">${w}</td>
+      <td>${l}</td>
+      <td>${gp ? rate+'%' : '—'}</td>
+    </tr>`;
+  }).join('');
 }
 
 function subscribeRealtime(){
@@ -179,6 +210,7 @@ function exportCSV(){
 
 /* ---------- matchmaking (local only — no need to sync courts) ---------- */
 let activeMap = {}; // athleteId -> bool, defaults true
+let lockedPairs = []; // array of [athleteId1, athleteId2] — always teamed together in doubles
 
 function renderRoster(){
   const chips = athletes.map(a=>{
@@ -200,6 +232,52 @@ function toggleActive(id, checked){
   renderRoster(); // keep pickleball + basketball checklists in sync with each other
 }
 
+function markCantPlay(athleteId, kind){
+  activeMap[athleteId] = false;
+  renderRoster();
+  if(kind === 'pickle') generateCourts();
+  else generateBasketball();
+}
+
+/* ---------- locked partners (pickleball doubles only) ---------- */
+function renderLockSelects(){
+  const optionsHtml = athletes.map(a=>`<option value="${a.id}">${a.name}</option>`).join('');
+  const selA = document.getElementById('lockA');
+  const selB = document.getElementById('lockB');
+  if(selA) selA.innerHTML = '<option value="">Player 1</option>' + optionsHtml;
+  if(selB) selB.innerHTML = '<option value="">Player 2</option>' + optionsHtml;
+}
+
+function renderLockedPairs(){
+  const el = document.getElementById('lockedList');
+  if(!el) return;
+  if(lockedPairs.length===0){
+    el.innerHTML = '<p class="hint" style="margin:0;">No locked pairs yet.</p>';
+    return;
+  }
+  el.innerHTML = lockedPairs.map((p, idx)=>{
+    const n1 = athletes.find(a=>a.id===p[0])?.name || '?';
+    const n2 = athletes.find(a=>a.id===p[1])?.name || '?';
+    return `<div class="chip">🔒 ${n1} &amp; ${n2}
+      <button class="remove-x" onclick="unlockPair(${idx})">✕</button></div>`;
+  }).join('');
+}
+
+function lockPair(){
+  const aId = document.getElementById('lockA').value;
+  const bId = document.getElementById('lockB').value;
+  if(!aId || !bId || aId===bId) return;
+  // a player can only be in one locked pair at a time
+  lockedPairs = lockedPairs.filter(p => !p.includes(aId) && !p.includes(bId));
+  lockedPairs.push([aId, bId]);
+  renderLockedPairs();
+}
+
+function unlockPair(idx){
+  lockedPairs.splice(idx, 1);
+  renderLockedPairs();
+}
+
 function shuffle(arr){
   const out = arr.slice();
   for(let i=out.length-1;i>0;i--){
@@ -209,37 +287,104 @@ function shuffle(arr){
   return out;
 }
 
+let currentCourts = []; // last generated pickleball matches, for recording results
+let currentGames = [];  // last generated basketball matches, for recording results
+
 function generateCourts(){
   const format = document.getElementById('formatSel').value;
-  const perCourt = format==='doubles' ? 4 : 2;
-  const activeAthletes = athletes.filter(a=>activeMap[a.id]);
-  const pool = shuffle(activeAthletes);
+  const nameTag = (a, locked) => {
+    const unpaidTag = isUnpaidToday(a.id) ? ` <span class="badge" style="margin-left:6px;">unpaid</span>` : '';
+    const lockTag = locked ? ' 🔒' : '';
+    return `<span class="player">${a.name}${lockTag}${unpaidTag}
+      <button class="miss-btn" title="Can't play — remove &amp; reshuffle" onclick="markCantPlay('${a.id}','pickle')">✕</button></span>`;
+  };
 
-  const nameTag = (a) => isUnpaidToday(a.id)
-    ? `${a.name} <span class="badge" style="margin-left:6px;">unpaid</span>`
-    : a.name;
+  if(format === 'singles'){
+    const pool = shuffle(athletes.filter(a=>activeMap[a.id]));
+    const courts = [];
+    let i=0;
+    for(; i+2<=pool.length; i+=2) courts.push({team1:[pool[i]], team2:[pool[i+1]], locked1:false, locked2:false});
+    const bench = pool.slice(i);
+    currentCourts = courts;
+
+    const grid = document.getElementById('courtsGrid');
+    grid.innerHTML = courts.length===0
+      ? `<p class="hint">Not enough players checked in for a full court yet.</p>`
+      : courts.map((c,idx)=>renderMatchCard('pickle', idx, `Court ${idx+1}`,
+          nameTag(c.team1[0]), nameTag(c.team2[0]))).join('');
+    document.getElementById('benchNote').innerHTML = bench.length
+      ? `<b>On the bench:</b> ${bench.map(a=>a.name).join(', ')}` : '';
+    return;
+  }
+
+  // --- doubles, with locked pairs kept together as one team ---
+  const activeIds = new Set(athletes.filter(a=>activeMap[a.id]).map(a=>a.id));
+  const byId = id => athletes.find(a=>a.id===id);
+
+  const validLockedPairs = lockedPairs.filter(p => activeIds.has(p[0]) && activeIds.has(p[1]));
+  const lockedIds = new Set(validLockedPairs.flat());
+
+  const remaining = shuffle(athletes.filter(a=>activeIds.has(a.id) && !lockedIds.has(a.id)));
+  const adhocTeams = [];
+  let r=0;
+  for(; r+2<=remaining.length; r+=2) adhocTeams.push([remaining[r], remaining[r+1]]);
+  const leftoverSingles = remaining.slice(r); // 0 or 1 player with no partner this round
+
+  const lockedTeams = validLockedPairs.map(p => [byId(p[0]), byId(p[1])]);
+  const allTeams = shuffle([...lockedTeams.map(t=>({team:t, locked:true})), ...adhocTeams.map(t=>({team:t, locked:false}))]);
 
   const courts = [];
   let i=0;
-  for(; i+perCourt<=pool.length; i+=perCourt) courts.push(pool.slice(i, i+perCourt));
-  const bench = pool.slice(i);
+  for(; i+2<=allTeams.length; i+=2){
+    courts.push({team1:allTeams[i].team, team2:allTeams[i+1].team, locked1:allTeams[i].locked, locked2:allTeams[i+1].locked});
+  }
+  const benchTeam = allTeams.slice(i); // 0 or 1 leftover team
+  const benchPlayers = [...benchTeam.flatMap(t=>t.team), ...leftoverSingles];
+  currentCourts = courts;
 
   const grid = document.getElementById('courtsGrid');
-  if(courts.length===0){
-    grid.innerHTML = `<p class="hint">Not enough players checked in for a full court yet.</p>`;
-  } else {
-    grid.innerHTML = courts.map((c,idx)=>{
-      if(format==='doubles'){
-        return `<div class="court-card"><h3>Court ${idx+1}</h3>
-          <div class="side">${nameTag(c[0])} &amp; ${nameTag(c[1])}</div>
-          <div class="vs">vs</div>
-          <div class="side">${nameTag(c[2])} &amp; ${nameTag(c[3])}</div></div>`;
-      }
-      return `<div class="court-card"><h3>Court ${idx+1}</h3>
-        <div class="side">${nameTag(c[0])}</div><div class="vs">vs</div><div class="side">${nameTag(c[1])}</div></div>`;
-    }).join('');
+  grid.innerHTML = courts.length===0
+    ? `<p class="hint">Not enough players checked in for a full court yet.</p>`
+    : courts.map((c, idx)=>{
+        const side1 = c.team1.map(p=>nameTag(p, c.locked1)).join(' &amp; ');
+        const side2 = c.team2.map(p=>nameTag(p, c.locked2)).join(' &amp; ');
+        return renderMatchCard('pickle', idx, `Court ${idx+1}`, side1, side2);
+      }).join('');
+  document.getElementById('benchNote').innerHTML = benchPlayers.length
+    ? `<b>On the bench:</b> ${benchPlayers.map(a=>a.name).join(', ')}` : '';
+}
+
+function renderMatchCard(kind, idx, title, side1Html, side2Html){
+  return `<div class="court-card" id="${kind}-card-${idx}">
+    <h3>${title}</h3>
+    <div class="side">${side1Html}</div>
+    <div class="vs">vs</div>
+    <div class="side">${side2Html}</div>
+    <div class="win-row">
+      <button class="action secondary win-btn" onclick="recordResult('${kind}', ${idx}, 1)">Team 1 won</button>
+      <button class="action secondary win-btn" onclick="recordResult('${kind}', ${idx}, 2)">Team 2 won</button>
+    </div>
+  </div>`;
+}
+
+async function recordResult(kind, idx, winnerSide){
+  const source = kind === 'pickle' ? currentCourts : currentGames;
+  const match = source[idx];
+  if(!match) return;
+  const winners = winnerSide === 1 ? match.team1 : match.team2;
+  const losers  = winnerSide === 1 ? match.team2 : match.team1;
+
+  const card = document.getElementById(`${kind}-card-${idx}`);
+  if(card){
+    const row = card.querySelector('.win-row');
+    if(row) row.innerHTML = `<span class="badge" style="border-color:var(--court); color:var(--court);">recorded ✓</span>`;
   }
-  document.getElementById('benchNote').innerHTML = bench.length ? `<b>On the bench:</b> ${bench.map(a=>a.name).join(', ')}` : '';
+
+  await Promise.all([
+    ...winners.map(p => sb.from('athletes').update({ wins: (p.wins||0) + 1 }).eq('id', p.id)),
+    ...losers.map(p => sb.from('athletes').update({ losses: (p.losses||0) + 1 }).eq('id', p.id))
+  ]);
+  await loadAll();
 }
 
 function generateBasketball(){
@@ -248,33 +393,32 @@ function generateBasketball(){
   const activeAthletes = athletes.filter(a=>activeMap[a.id]);
   const pool = shuffle(activeAthletes);
 
-  const nameTag = (a) => isUnpaidToday(a.id)
-    ? `${a.name} <span class="badge" style="margin-left:6px;">unpaid</span>`
-    : a.name;
+  const nameTag = (a) => {
+    const unpaidTag = isUnpaidToday(a.id) ? ` <span class="badge" style="margin-left:6px;">unpaid</span>` : '';
+    return `<span class="player">${a.name}${unpaidTag}
+      <button class="miss-btn" title="Can't play — remove &amp; reshuffle" onclick="markCantPlay('${a.id}','bb')">✕</button></span>`;
+  };
 
   const games = [];
   let i=0;
-  for(; i+perGame<=pool.length; i+=perGame) games.push(pool.slice(i, i+perGame));
+  for(; i+perGame<=pool.length; i+=perGame){
+    const chunk = pool.slice(i, i+perGame);
+    games.push({team1: chunk.slice(0, perTeam), team2: chunk.slice(perTeam)});
+  }
   const bench = pool.slice(i);
+  currentGames = games;
 
   const grid = document.getElementById('bbGrid');
-  if(games.length===0){
-    grid.innerHTML = `<p class="hint">Not enough players checked in for a full ${perTeam}v${perTeam} game yet.</p>`;
-  } else {
-    grid.innerHTML = games.map((g,idx)=>{
-      const teamA = g.slice(0, perTeam);
-      const teamB = g.slice(perTeam);
-      return `<div class="court-card"><h3>Game ${idx+1} — ${perTeam}v${perTeam}</h3>
-        <div class="side">${teamA.map(nameTag).join(', ')}</div>
-        <div class="vs">vs</div>
-        <div class="side">${teamB.map(nameTag).join(', ')}</div></div>`;
-    }).join('');
-  }
-  document.getElementById('bbBenchNote').innerHTML = bench.length ? `<b>On the bench:</b> ${bench.map(a=>a.name).join(', ')}` : '';
+  grid.innerHTML = games.length===0
+    ? `<p class="hint">Not enough players checked in for a full ${perTeam}v${perTeam} game yet.</p>`
+    : games.map((g, idx)=>renderMatchCard('bb', idx, `Game ${idx+1} — ${perTeam}v${perTeam}`,
+        g.team1.map(nameTag).join(', '), g.team2.map(nameTag).join(', '))).join('');
+  document.getElementById('bbBenchNote').innerHTML = bench.length
+    ? `<b>On the bench:</b> ${bench.map(a=>a.name).join(', ')}` : '';
 }
 
 /* ---------- tabs ---------- */
-const tabSections = { ledger: 'tab-ledger', courts: 'tab-courts', basketball: 'tab-basketball' };
+const tabSections = { ledger: 'tab-ledger', courts: 'tab-courts', basketball: 'tab-basketball', leaderboard: 'tab-leaderboard' };
 document.querySelectorAll('.tab-btn').forEach(btn=>{
   btn.addEventListener('click', ()=>{
     document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
