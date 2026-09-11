@@ -1,10 +1,11 @@
-const SUPABASE_URL = "https://xcgwltntqdppofgibfbm.supabase.co"; 
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhjZ3dsdG50cWRwcG9mZ2liZmJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0MTU3NzAsImV4cCI6MjEwMzk5MTc3MH0.8j9rUX8UlFfa7IaeYdsp2QiLLiValOJgcIaE67XNsKA";       // long string starting with "eyJ..."
+const SUPABASE_URL = "https://xcgwltntqdppofgibfbm.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhjZ3dsdG50cWRwcG9mZ2liZmJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0MTU3NzAsImV4cCI6MjEwMzk5MTc3MH0.8j9rUX8UlFfa7IaeYdsp2QiLLiValOJgcIaE67XNsKA"; 
 
 let sb = null;
-let athletes = []; 
-let dates = []; 
-let payments = []; 
+let athletes = [];   
+let dates = [];      
+let payments = [];    
+let attendance = [];  
 
 function isConfigured(){
   return !SUPABASE_URL.includes("PASTE_YOUR") && !SUPABASE_ANON_KEY.includes("PASTE_YOUR");
@@ -38,22 +39,26 @@ async function init(){
 }
 
 async function loadAll(){
-  const [ath, dat, pay] = await Promise.all([
+  const [ath, dat, pay, att] = await Promise.all([
     sb.from('athletes').select('*').order('created_at'),
     sb.from('collection_dates').select('*').order('date_key'),
-    sb.from('payments').select('*')
+    sb.from('payments').select('*'),
+    sb.from('attendance').select('*')
   ]);
   if(ath.error) throw ath.error;
   if(dat.error) throw dat.error;
   if(pay.error) throw pay.error;
+  if(att.error) throw att.error;
   athletes = ath.data || [];
   dates = dat.data || [];
   payments = pay.data || [];
+  attendance = att.data || [];
   renderLedger();
   renderRoster();
   renderLockSelects();
   renderLockedPairs();
   renderLeaderboard();
+  renderAttendanceTab();
 }
 
 function renderLeaderboard(){
@@ -93,6 +98,7 @@ function subscribeRealtime(){
     .on('postgres_changes', {event:'*', schema:'public', table:'payments'}, loadAll)
     .on('postgres_changes', {event:'*', schema:'public', table:'athletes'}, loadAll)
     .on('postgres_changes', {event:'*', schema:'public', table:'collection_dates'}, loadAll)
+    .on('postgres_changes', {event:'*', schema:'public', table:'attendance'}, loadAll)
     .subscribe();
 }
 
@@ -242,7 +248,93 @@ function markCantPlay(athleteId, kind){
   else generateBasketball();
 }
 
-/* ---------- locked partners (pickleball doubles only) ---------- */
+/* ---------- attendance & debt tracking ---------- */
+let selectedAttendanceDate = null;
+const SESSION_RATE = 20; // assumed ₱ per session, used only to estimate owed amounts
+
+function attendanceFor(athleteId, dateKey){
+  const rec = attendance.find(x=>x.athlete_id===athleteId && x.date_key===dateKey);
+  return rec ? !!rec.present : false;
+}
+
+function renderAttendanceTab(){
+  const sel = document.getElementById('attendanceDateSel');
+  if(!sel) return; // tab not in DOM yet
+
+  if(!selectedAttendanceDate || !dates.some(d=>d.date_key===selectedAttendanceDate)){
+    selectedAttendanceDate = getSessionDateKey() || (dates[0] && dates[0].date_key);
+  }
+
+  sel.innerHTML = dates.map(d=>
+    `<option value="${d.date_key}" ${d.date_key===selectedAttendanceDate?'selected':''}>${d.label}</option>`
+  ).join('');
+
+  const dateKey = selectedAttendanceDate;
+  if(!dateKey){
+    document.getElementById('attendanceRoster').innerHTML = '<p class="hint" style="margin:0;">No collection dates yet — add one on the Payment Ledger tab first.</p>';
+    document.getElementById('debtThisDate').innerHTML = '';
+    renderDebtSummary();
+    return;
+  }
+
+  document.getElementById('attendanceRoster').innerHTML = athletes.map(a=>{
+    const present = attendanceFor(a.id, dateKey);
+    return `<label class="chip">
+      <input type="checkbox" ${present?'checked':''} onchange="toggleAttendance('${a.id}','${dateKey}', this.checked)">
+      ${a.name}
+    </label>`;
+  }).join('');
+
+  const debtors = athletes.filter(a => attendanceFor(a.id, dateKey) && !paymentFor(a.id, dateKey));
+  document.getElementById('debtThisDate').innerHTML = debtors.length
+    ? debtors.map(a=>`<div class="chip unpaid">${a.name} <span class="badge">owes</span></div>`).join('')
+    : '<p class="hint" style="margin:0;">Everyone who showed up has paid for this date. 🎉</p>';
+
+  renderDebtSummary();
+}
+
+function onAttendanceDateChange(value){
+  selectedAttendanceDate = value;
+  renderAttendanceTab();
+}
+
+async function toggleAttendance(athleteId, dateKey, present){
+  if(present){
+    await sb.from('attendance').upsert({athlete_id: athleteId, date_key: dateKey, present: true});
+  } else {
+    await sb.from('attendance').delete().eq('athlete_id', athleteId).eq('date_key', dateKey);
+  }
+  await loadAll();
+}
+
+function renderDebtSummary(){
+  const body = document.getElementById('debtRows');
+  if(!body) return;
+
+  const rows = athletes.map(a=>{
+    const attendedDates = attendance.filter(x=>x.athlete_id===a.id && x.present).map(x=>x.date_key);
+    const paidDates = payments.filter(p=>p.athlete_id===a.id && Number(p.amount)>0).map(p=>p.date_key);
+    const unpaidDates = attendedDates.filter(d=>!paidDates.includes(d));
+    return {
+      name: a.name,
+      attended: attendedDates.length,
+      paid: paidDates.length,
+      unpaid: unpaidDates.length,
+      owed: unpaidDates.length * SESSION_RATE
+    };
+  }).filter(r=>r.attended > 0) // only show athletes with at least one attendance record
+    .sort((a,b)=>b.unpaid - a.unpaid);
+
+  body.innerHTML = rows.length ? rows.map(r=>`
+    <tr>
+      <td>${r.name}</td>
+      <td>${r.attended}</td>
+      <td>${r.paid}</td>
+      <td class="total-cell" style="color:${r.unpaid>0?'var(--coral)':'var(--court)'}">${r.unpaid}</td>
+      <td>${r.unpaid>0 ? '₱'+r.owed : '—'}</td>
+    </tr>`).join('')
+    : `<tr><td colspan="5" class="hint">No attendance marked yet — check people in above to start tracking.</td></tr>`;
+}
 function renderLockSelects(){
   const optionsHtml = athletes.map(a=>`<option value="${a.id}">${a.name}</option>`).join('');
   const selA = document.getElementById('lockA');
@@ -421,7 +513,7 @@ function generateBasketball(){
 }
 
 /* ---------- tabs ---------- */
-const tabSections = { ledger: 'tab-ledger', courts: 'tab-courts', basketball: 'tab-basketball', leaderboard: 'tab-leaderboard' };
+const tabSections = { ledger: 'tab-ledger', courts: 'tab-courts', basketball: 'tab-basketball', leaderboard: 'tab-leaderboard', debt: 'tab-debt' };
 document.querySelectorAll('.tab-btn').forEach(btn=>{
   btn.addEventListener('click', ()=>{
     document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
