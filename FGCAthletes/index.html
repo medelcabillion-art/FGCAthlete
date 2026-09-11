@@ -30,6 +30,7 @@
   <button class="tab-btn" data-tab="courts">Pickleball Courts</button>
   <button class="tab-btn" data-tab="basketball">Basketball Games</button>
   <button class="tab-btn" data-tab="leaderboard">Leaderboard</button>
+  <button class="tab-btn" data-tab="debt">Attendance &amp; Debt</button>
 </nav>
 
 <main>
@@ -125,6 +126,36 @@
       </div>
       <div class="add-row">
         <button class="action secondary" style="border-color:var(--coral); color:var(--coral);" onclick="resetLeaderboard()">Reset leaderboard</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-debt" style="display:none;">
+    <div class="panel">
+      <h2>Mark attendance</h2>
+      <p class="hint">Pick the date, then check off everyone who actually showed up. This is separate from payment — it's what lets us tell "didn't come" apart from "came but didn't pay."</p>
+      <div class="controls">
+        <label>Date
+          <select id="attendanceDateSel" onchange="onAttendanceDateChange(this.value)"></select>
+        </label>
+      </div>
+      <div class="roster" id="attendanceRoster"></div>
+    </div>
+
+    <div class="panel">
+      <h2>In debt for this date</h2>
+      <p class="hint">Present that day, but no payment recorded for it.</p>
+      <div class="roster" id="debtThisDate"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Overall debt summary</h2>
+      <p class="hint">Across every date recorded so far — sessions attended without a matching payment.</p>
+      <div class="table-scroll">
+        <table id="debtTable">
+          <thead><tr><th>Name</th><th>Sessions attended</th><th>Sessions paid</th><th>Unpaid sessions</th><th>Est. owed</th></tr></thead>
+          <tbody id="debtRows"></tbody>
+        </table>
       </div>
     </div>
   </section>
